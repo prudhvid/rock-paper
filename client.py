@@ -6,6 +6,7 @@ import json
 import threading
 import signal
 from transitions import Machine
+import constants as cs
 
 USER_FILE = './user.txt'
 SERVER_IP = 'http://127.0.0.1'
@@ -13,11 +14,6 @@ SERVER_PORT = 5000
 
 SERVER_ADDR = SERVER_IP + ":" + str(SERVER_PORT)
 
-NEW_MATCH = 'new_match'
-JOIN_MATCH = 'join_match'
-BEGIN_MATCH = 'begin_match'
-RESULT = 'result'
-LEAVE = 'leave_match'
 
 user_name = None
 matchId = None
@@ -64,68 +60,9 @@ def get_msg(obj):
     return  dict(obj, **user_obj)
 
 
-    
-
-def join_match():
-    print 'Please enter matchId'
-    matchID = sys.stdin.readline()[:-1]
-    global matchId
-    matchId = matchID
-    msg = get_msg({})
-    socketIO.emit(JOIN_MATCH, msg)
-    
-
-def main_loop():
-    while True:
-        print """
-        What do you want to do?\n
-        1. New Match
-        2. Join Match
-        3. Exit
-        """
-        c = sys.stdin.readline()
-        if len(c) != 2 or c[0] < '1' or c[0] > '3':
-            print 'Please enter correct value'
-        else:
-            c = int(c)
-            if c == 1:
-                new_match()
-                break
-            elif c==2:
-                join_match()
-                break
-            else:
-                print 'done'
-                sys.exit(0)
 
 
 
-
-def onjoin_match(msg):
-    if msg:
-        if not msg['status']:
-            print msg['text']
-
-
-        
-
-
-
-
-
-def onleave(msg):
-    print msg['user'] + " has left the match"
-
-def exit_match(signal, frame):
-    print 'leaving match!'
-    socketIO.emit('leave_match', get_msg({}))
-    socketIO.disconnect()
-    sys.exit(0)
-    
-
-
-
-signal.signal(signal.SIGINT, exit_match)
 
 
 
@@ -140,7 +77,7 @@ class sm(object):
 
     transitions = [
         {'trigger': 'new_match', 'source': 'init', 'dest': 'waiting_join'},
-        {'trigger': 'join_match', 'source': 'init', 'dest': 'joining'},
+        {'trigger': 'join_match', 'source': 'init', 'dest': 'waiting_join'},
 
         {'trigger': 'begin_match', 'source': 'waiting_join', 'dest': 'playing'},
         {'trigger': 'sent_value', 'source': 'playing', 'dest': 'waiting_play'},
@@ -152,6 +89,7 @@ class sm(object):
     ]
 
     def __init__(self, name):
+        self.opponent = None
         self.name = name
         self.machine = Machine(model=self, states=sm.states, transitions=sm.transitions, initial='dummy')
         self.to_init()
@@ -166,21 +104,21 @@ class sm(object):
         c = sys.stdin.readline()[0]
         if c == '1':
             msg = get_msg({})
-            socketIO.emit(NEW_MATCH, msg)
+            socketIO.emit(cs.NEW_MATCH, msg)
         elif c == '2':
             print 'Please enter matchId'
             matchID = sys.stdin.readline()[:-1]
             global matchId
             matchId = matchID
             msg = get_msg({})
-            socketIO.emit(JOIN_MATCH, msg)
+            socketIO.emit(cs.JOIN_MATCH, msg)
+            self.join_match()
         else:
             self.exit()
 
     def on_enter_exit(self):
         print 'leaving match!'
         socketIO.emit('leave_match', get_msg({}))
-        socketIO.disconnect()
         sys.exit(0)
 
     def on_enter_waiting_join(self):
@@ -193,14 +131,24 @@ class sm(object):
         socketIO.emit('play', msg)
         self.sent_value()
 
-    def on_enter_result(self):
+    def on_enter_played(self):
         print ("Do you want a rematch (y/n)?")
         ans = sys.stdin.readline()[0]
         if ans == 'y':
             print 'Waiting for other participant to join'
+            socketIO.emit('rematch', get_msg({}))
+            self.rematch()
         else:
-            self.exit()
+            print 'leaving_match'
+            socketIO.emit('leave_match', get_msg({}))
+            self.to_init()
 
+    def on_enter_opp_exit(self):
+        global matchId
+        print self.opponent + ' has exited!'
+        socketIO.emit(cs.LEAVE, get_msg({}))
+        matchId = None
+        self.to_init()
 
     def sock_match_confirm(self, msg):
         if msg:
@@ -210,15 +158,24 @@ class sm(object):
                 self.new_match()
             else:
                 print 'new_match failed'
-                
+
     def sock_begin_match(self, msg):
         if msg:
             users = msg['users']
             print 'Match started between ' + users[0] + "and " + users[1]
+            self.opponent = users[0] if users[1] == user_name else users[1]
             self.begin_match()
+
+
     def sock_onresult(self, msg):
         if msg:
-            
+            user2 = msg['data'][1] if msg['data'][0][0] == user_name \
+                    else msg['data'][0]
+
+            user1 = msg['data'][0] if msg['data'][0][0] == user_name \
+                    else msg['data'][1]
+
+            print user2[0] + "has chose "+ user2[1]
             if msg['result'] == 0:
                 print 'match drawn'
             elif msg['data'][0][0] == user_name and msg['result'] == 1\
@@ -227,7 +184,17 @@ class sm(object):
             else:
                 print "You've lost"
             self.result()
-                
+    
+    def sock_onjoin_match(self, msg):
+        if msg:
+            if not msg['status']:
+                print msg['text']
+
+    def sock_onrematch(self, msg):
+        self.rematch_reply()
+
+    def sock_onleave(self, msg):
+        self.opp_exit()
 
 machine = sm("Test")
 
@@ -238,18 +205,22 @@ machine = sm("Test")
 
 
 
+def exit_match(signal, frame):
+    machine.exit()
+    
+
+
+
+signal.signal(signal.SIGINT, exit_match)
 
 
 
 
+socketIO.on(cs.JOIN_MATCH, machine.sock_onjoin_match)
+socketIO.on(cs.NEW_MATCH, machine.sock_match_confirm)
+socketIO.on(cs.BEGIN_MATCH, machine.sock_begin_match)
+socketIO.on(cs.RESULT, machine.sock_onresult)
+socketIO.on(cs.REMATCH, machine.sock_onrematch)
+socketIO.on(cs.LEAVE, machine.sock_onleave)
 
-
-
-socketIO.on(JOIN_MATCH, onjoin_match)
-socketIO.on(NEW_MATCH, machine.sock_match_confirm)
-socketIO.on(BEGIN_MATCH, machine.sock_begin_match)
-socketIO.on(RESULT, machine.sock_onresult)
-socketIO.on(LEAVE, onleave)
-# threading.Thread(target=main_loop).start()
-# main_loop()
-socketIO.wait(12000)
+socketIO.wait()

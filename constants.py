@@ -1,0 +1,6 @@
+NEW_MATCH = 'new_match'
+JOIN_MATCH = 'join_match'
+BEGIN_MATCH = 'begin_match'
+RESULT = 'result'
+LEAVE = 'leave_match'
+REMATCH = 'rematch'
