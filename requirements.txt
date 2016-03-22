@@ -1,0 +1,6 @@
+socketIO_client
+requests
+transitions
+flask
+flask_socketio
+pygraphviz

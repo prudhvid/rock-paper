@@ -1,5 +1,10 @@
 import random
+
+
 class rps:
+    """
+    class for rock paper scisssor
+    """
     rock = 'r'
     paper = 'p'
     scissor = 's'
@@ -14,6 +19,13 @@ class rps:
 
     @staticmethod
     def check(p1, p2):
+        """
+        checks for win, returns 
+        1 if p1 wins
+        0 if draw
+        -1 if p2 wins
+
+        """
         if p1 == p2:
             return 0
         else:
@@ -26,6 +38,9 @@ class rps:
 
 
 def random_string():
+    """
+    To create matchIds
+    """
     n = 10
 
     lower = "abcdefghijklmnopqrstuvwxyz"
