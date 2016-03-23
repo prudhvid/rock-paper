@@ -1,6 +1,8 @@
-socketIO_client
 requests
-transitions
 flask
 flask_socketio
-pygraphviz
+socketIO_client
+transitions
+eventlet
+gevent
+gevent-websocket
