@@ -6,3 +6,4 @@ transitions
 eventlet
 gevent
 gevent-websocket
+click

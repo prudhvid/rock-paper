@@ -7,12 +7,14 @@ import threading
 import signal
 from transitions import Machine
 import constants as cs
+import click
 
 USER_FILE = './user.txt'
-SERVER_IP = 'http://127.0.0.1'
-SERVER_PORT = 5000
 
-SERVER_ADDR = SERVER_IP + ":" + str(SERVER_PORT)
+SERVER_IP = None
+SERVER_PORT = None
+
+
 
 
 user_name = None
@@ -22,7 +24,9 @@ matchId = None
 """
 Create a file USER_FILE in the current directory and use it afterwards
 """
-if not os.path.exists(USER_FILE):
+# if not os.path.exists(USER_FILE):
+def enter_nick():
+    global user_name
     while True:
         print('please enter your nick:')
         nick = sys.stdin.readline()[:-1]
@@ -37,12 +41,12 @@ if not os.path.exists(USER_FILE):
                 break
         else:
             print data['text']
-else:
-    with open(USER_FILE) as fobj:
-        user_name = fobj.readline()
+# else:
+#     with open(USER_FILE) as fobj:
+#         user_name = fobj.readline()
 
 # SocketIo for all communications with server
-socketIO = SocketIO(SERVER_IP, SERVER_PORT, LoggingNamespace)
+socketIO = None
 
 
 def get_msg(obj):
@@ -206,7 +210,7 @@ class sm(object):
         """
         if msg:
             users = msg['users']
-            print 'Match started between ' + users[0] + "and " + users[1]
+            print 'Match started between ' + users[0] + " and " + users[1]
             self.opponent = users[0] if users[1] == user_name else users[1]
             self.begin_match()
 
@@ -223,7 +227,7 @@ class sm(object):
             user1 = msg['data'][0] if msg['data'][0][0] == user_name \
                 else msg['data'][1]
 
-            print user2[0] + "has chose " + user2[1]
+            print user2[0] + " has chose " + user2[1]
             if msg['result'] == 0:
                 print 'match drawn'
             elif msg['data'][0][0] == user_name and msg['result'] == 1\
@@ -257,21 +261,43 @@ class sm(object):
         """
         self.opp_exit()
 
-machine = sm("Test")
 
+machine = None
 
 def exit_match(signal, frame):
     machine.exit()
 
+@click.command()
+@click.option('--sip', default="http://127.0.0.1", help='Server Ip')
+@click.option('--port', default=5000, help='The defualt port on server.')
+def main(sip,port):
+    global SERVER_IP
+    global SERVER_PORT
+    global SERVER_ADDR
+    global socketIO
+    global machine
 
-signal.signal(signal.SIGINT, exit_match)
 
 
-socketIO.on(cs.JOIN_MATCH, machine.sock_onjoin_match)
-socketIO.on(cs.NEW_MATCH, machine.sock_match_confirm)
-socketIO.on(cs.BEGIN_MATCH, machine.sock_begin_match)
-socketIO.on(cs.RESULT, machine.sock_onresult)
-socketIO.on(cs.REMATCH, machine.sock_onrematch)
-socketIO.on(cs.LEAVE, machine.sock_onleave)
+    SERVER_IP = sip
+    SERVER_PORT = port
+    SERVER_ADDR = SERVER_IP + ":" + str(SERVER_PORT)
+    socketIO = SocketIO(SERVER_IP, SERVER_PORT, LoggingNamespace)
 
-socketIO.wait()
+    enter_nick()
+    machine = sm("Test")
+    signal.signal(signal.SIGINT, exit_match)
+
+    
+
+    socketIO.on(cs.JOIN_MATCH, machine.sock_onjoin_match)
+    socketIO.on(cs.NEW_MATCH, machine.sock_match_confirm)
+    socketIO.on(cs.BEGIN_MATCH, machine.sock_begin_match)
+    socketIO.on(cs.RESULT, machine.sock_onresult)
+    socketIO.on(cs.REMATCH, machine.sock_onrematch)
+    socketIO.on(cs.LEAVE, machine.sock_onleave)
+
+    socketIO.wait()
+
+if __name__ == '__main__':
+    main()

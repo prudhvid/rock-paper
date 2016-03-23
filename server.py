@@ -150,6 +150,7 @@ def leave_match(msg):
     If one of them, leaves broadcast the message to all members of room
     """
     user = msg['user']
+    users.remove(user)
     if 'matchId' in msg:
         roomId = msg['matchId']
         if user in rooms[roomId]:
